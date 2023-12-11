@@ -13,10 +13,10 @@ namespace rF2XMLTestAPI.Controllers
         private TracksManger _manager;
         //private DBDriversManager _manager = new DBDriversManager();
 
-        public TrackController(RaceResultContext context, LapsContext lapsContext, DriverContext driverContext, Context context1)
+        public TrackController(RaceResultContext context, Context context2)
         {
             //DB
-            _manager = new TracksManger(context, lapsContext, driverContext, context1);
+            _manager = new TracksManger(context, context2);
 
             // Non DB
             //_manager = new UsersManager();

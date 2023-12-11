@@ -4,6 +4,7 @@ using System.Xml;
 using Formatting = Newtonsoft.Json.Formatting;
 using rF2XMLTestAPI.DBContext;
 using Newtonsoft.Json.Linq;
+using System.Linq;
 
 namespace rF2XMLTestAPI.Manager
 {
@@ -28,6 +29,29 @@ namespace rF2XMLTestAPI.Manager
             return root;
         }
 
+
+        public List<FileContent> GetAllXmlFilesInDirectoryWithContents(string directoryPath)
+        {
+            var result = new List<FileContent>();
+
+            if (Directory.Exists(directoryPath))
+            {
+                string[] files = Directory.GetFiles(directoryPath, "*.xml");
+
+                foreach (var file in files)
+                {
+                    var content = File.ReadAllText(file);
+                    result.Add(new FileContent { FilePath = file, Content = content });
+                }
+            }
+            else
+            {
+                throw new DirectoryNotFoundException($"The directory {directoryPath} does not exist.");
+            }
+
+            return result;
+        }
+
         private FileInfo GetLatestFile()
         {
             string pattern = "*.xml";
@@ -35,6 +59,15 @@ namespace rF2XMLTestAPI.Manager
             var dirInfo = new DirectoryInfo(filePath);
             return (from f in dirInfo.GetFiles(pattern) orderby f.LastWriteTime descending select f).First();
         }
+
+        public  FileInfo[] GetAllXmlFiles()
+        {
+            string pattern = "*.xml";
+            var filePath = "D:\\Racing\\rfactor2-dedicated\\UserData\\Log\\Results";
+            var dirInfo = new DirectoryInfo(filePath);
+            return dirInfo.GetFiles(pattern).OrderByDescending(f => f.LastWriteTime).ToArray();
+        }
+
         private JObject ParseFileToJson(FileInfo file)
         {
             using (StreamReader r = new StreamReader(file.FullName))
@@ -47,7 +80,17 @@ namespace rF2XMLTestAPI.Manager
 
                 JObject jsonObject = JObject.Parse(jsonText);
 
-                JToken driverElement = jsonObject["rFactorXML"]["RaceResults"]["Practice1"]["Driver"];
+                string[] keys = { "Practice", "Practice1","Practice2","Practice3", "Qualify", "Qualify1", "Qualify2", "Qualify3", "Race", "Race1", "Race2", "Race3", "TestDay" };
+                JToken driverElement = null;
+
+                foreach (var key in keys)
+                {
+                    if (jsonObject["rFactorXML"]["RaceResults"][key] != null)
+                    {
+                        driverElement = jsonObject["rFactorXML"]["RaceResults"][key]["Driver"];
+                        break;
+                    }
+                }
 
                 jsonObject["rFactorXML"]["RaceResults"].Last.Remove();
                 jsonObject["rFactorXML"]["RaceResults"]["Driver"] = driverElement;
@@ -64,30 +107,43 @@ namespace rF2XMLTestAPI.Manager
 
         private RaceResults AddTrackToDatabase(Root root)
         {
-            string trackVenue = root.rFactorXML.RaceResults.TrackVenue.ToString();
+            string TrackCourse = root.rFactorXML.RaceResults.TrackCourse.ToString();
 
-            RaceResults existingTrack = _raceResultContext.RaceResults.FirstOrDefault(d => d.TrackVenue == trackVenue);
+            RaceResults existingTrack = _raceResultContext.RaceResults.FirstOrDefault(d => d.TrackCourse == TrackCourse);
             if (existingTrack == null)
             {
-                var newTrack = _raceResultContext.RaceResults.Add(new RaceResults { TrackVenue = trackVenue });
+                var entityEntry = _raceResultContext.RaceResults.Add(new RaceResults { TrackCourse = TrackCourse });
                 _raceResultContext.SaveChanges();
+                existingTrack = entityEntry.Entity;
             }
             return existingTrack;
         }
 
-        private void UpdateDatabase(Root root, RaceResults existingTrack)
-        {
-            string trackVenue = root.rFactorXML.RaceResults.TrackVenue.ToString();
+         private void UpdateDatabase(Root root, RaceResults existingTrack)
+       {
+            string trackVenue = root.rFactorXML.RaceResults.TrackCourse.ToString();
 
             if (root != null && root.rFactorXML.RaceResults.Driver != null)
             {
                 foreach (var driver in root.rFactorXML.RaceResults.Driver)
                 {
-                    Driver? existingDriver = _driverContext.Drivers.FirstOrDefault(d => d.Name == driver.Name);
+                    //Split Driver Name into First and Last Name
+                    string[] names = driver.FirstName.Split(' ');
+                    if (names.Length > 1)
+                    {
+                        driver.FirstName = names[0];
+                        driver.LastName = names[1];
+                    }
+
+                    //Check if Driver already exists in Database
+                    Driver? existingDriver = _driverContext.Drivers.FirstOrDefault(d => d.FirstName == driver.FirstName && d.LastName == driver.LastName);
+
+                    //Driver? existingDriver = _driverContext.Drivers.FirstOrDefault(d => d.Name == driver.Name);
 
                     if (existingDriver == null)
                     {
-                        _driverContext.Drivers.Add(new Driver { Name = driver.Name });
+                        _driverContext.Drivers.Add(new Driver { FirstName = driver.FirstName, LastName = driver.LastName });
+                        _driverContext.SaveChanges();
                     }
 
                     if (driver.Lap != null)
@@ -100,7 +156,14 @@ namespace rF2XMLTestAPI.Manager
                                 {
                                     DriverId = existingDriver != null ? existingDriver.Id : driver.Id,
                                     LapTime = lap.LapTime,
-                                    RaceResultsId = existingTrack.Id
+                                    Sector1 = lap.Sector1,
+                                    Sector2 = lap.Sector2,
+                                    Sector3 = lap.Sector3,
+                                    RaceResultsId = existingTrack.Id,
+                                    CarClass = driver.CarClass,
+                                    CarType = driver.CarType,
+                                    Fuel = lap.Fuel,
+                                    VehName = driver.VehName
                                 };
 
                                 _lapsContext.Laps.Add(lapEntity);
@@ -108,107 +171,9 @@ namespace rF2XMLTestAPI.Manager
                         }
                     }
                 }
-
-                _driverContext.SaveChanges();
+                
                 _lapsContext.SaveChanges();
             }
         }
-
-        /*
-        public Root LoadLatestResult()
-        {
-            string pattern = "*.xml";
-            var filePath = "D:\\Racing\\rfactor2-dedicated\\UserData\\Log\\Results";
-            var dirInfo = new DirectoryInfo(filePath);
-            var file = (from f in dirInfo.GetFiles(pattern) orderby f.LastWriteTime descending select f).First();
-
-            using (StreamReader r = new StreamReader(file.FullName))    
-            {
-                XmlDocument doc = new XmlDocument();
-                string xml = r.ReadToEnd();
-                doc.LoadXml(xml);
-
-                var test = JsonConvert.SerializeXmlNode(doc);
-
-                string fileName = file.FullName;
-
-                //File.WriteAllText(fileName, JsonConvert.SerializeXmlNode(doc, Formatting.Indented));
-
-                string jsonText =  JsonConvert.SerializeXmlNode(doc, Formatting.Indented);
-
-                JObject jsonObject = JObject.Parse(jsonText);
-
-                //Console.WriteLine(root.rFactorXML.RaceResults.TrackVenue);
-                JToken driverElement = jsonObject["rFactorXML"]["RaceResults"]["Practice1"]["Driver"];
-
-                jsonObject["rFactorXML"]["RaceResults"].Last.Remove();
-                jsonObject["rFactorXML"]["RaceResults"]["Driver"] = driverElement;
-
-                // Convert the modified JObject back to a JSON string
-                string modifiedJsonString = jsonObject.ToString();
-
-                Root? root = JsonConvert.DeserializeObject<Root>(modifiedJsonString);
-                
-                string trackVenue = root.rFactorXML.RaceResults.TrackVenue.ToString(); 
-
-                if (root != null && root.rFactorXML.RaceResults.Driver != null)
-                {
-                    RaceResults existingTrack = _raceResultContext.RaceResults.FirstOrDefault(d => d.TrackVenue == trackVenue);
-                    if (existingTrack == null)
-                    {
-                        _raceResultContext.RaceResults.Add(new RaceResults { TrackVenue = trackVenue });
-                        _raceResultContext.SaveChanges();
-                    }
-                    foreach (var driver in root.rFactorXML.RaceResults.Driver)
-                    {
-                        // Check if the driver already exists in the database based on some criteria, e.g., Name
-                        Driver? existingDriver = _driverContext.Drivers.FirstOrDefault(d => d.Name == driver.Name);
-
-                        if (existingDriver == null)
-                        {
-                            // Driver name does not exist, add it to the database
-                            _driverContext.Drivers.Add(new Driver { Name = driver.Name });
-                        }
-
-                        // Now, add the driver's laps to the Laps table
-
-                        if (driver.Lap != null)
-                        {
-                            foreach (var lap in driver.Lap)
-                            {
-                                if (lap != null && lap.LapTime != "--.----")
-                                {
-                                    var lapEntity = new Lap
-                                    {
-                                        DriverId = existingDriver != null ? existingDriver.Id : driver.Id,
-                                        LapTime = lap.LapTime,
-                                        RaceResultsId = existingTrack.Id
-                                    };
-
-                                    _lapsContext.Laps.Add(lapEntity);
-                                }
-                            }
-                        }
-                      
-                    }
-
-                    // Save changes to the database
-                    _driverContext.SaveChanges();
-                    _lapsContext.SaveChanges();
-                }
-
-                return root;
-
-            }
-        }
-        */
-        /*
-        public Root LoadJson(string jsonText)
-        {
-            Root? root = JsonConvert.DeserializeObject<Root>(jsonText);
-
-            return root;
-        }
-        */
     }
 }

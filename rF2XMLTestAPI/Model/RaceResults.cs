@@ -4,6 +4,6 @@
     {
         public int Id { get; set; }
         public List<Driver> Driver { get; set; }
-        public string TrackVenue { get; set; }
+        public string TrackCourse { get; set; }
     }
 }

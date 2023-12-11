@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using rF2XMLTestAPI.DBContext;
 using rF2XMLTestAPI.Manager;
 using rF2XMLTestAPI.Model;
+using System.Text.Json;
 
 namespace rF2XMLTestAPI.Controllers
 {
@@ -16,7 +17,7 @@ namespace rF2XMLTestAPI.Controllers
         public rF2XMLController(DriverContext driverContext, LapsContext lapsContext, RaceResultContext raceResultContext)
         {
             //DB
-            _manager = new rFactorXMLManager(driverContext, lapsContext, raceResultContext  );
+            _manager = new rFactorXMLManager(driverContext, lapsContext, raceResultContext);
 
             // Non DB
             //_manager = new rFactorXMLManager();
@@ -25,7 +26,7 @@ namespace rF2XMLTestAPI.Controllers
         [EnableCors("AllowAll")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [HttpGet]
+        [HttpGet("GetRaceResults")]
         public ActionResult<Root> GetRaceResults()
         {
             try
@@ -38,5 +39,23 @@ namespace rF2XMLTestAPI.Controllers
                 return BadRequest($"Error: {ex.Message}");
             }
         }
+
+        [EnableCors("AllowAll")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("GetAllXMLResults")]
+        public ActionResult<List<FileContent>> GetAllXMLFilesInDirectoryWithContents(string directoryPath)
+        {
+            try
+            {
+                var result = _manager.GetAllXmlFilesInDirectoryWithContents(directoryPath);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest($"Error: {ex.Message}");
+            }
+        }
+
     }
 }
