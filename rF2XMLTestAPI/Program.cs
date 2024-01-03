@@ -22,7 +22,6 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<DriverContext>(opt => opt.UseSqlServer(Secrets.connectionString));
 builder.Services.AddDbContext<LapsContext>(opt => opt.UseSqlServer(Secrets.connectionString));
 builder.Services.AddDbContext<RaceResultContext>(opt => opt.UseSqlServer(Secrets.connectionString));
-builder.Services.AddDbContext<TrackContext>(opt => opt.UseSqlServer(Secrets.connectionString));
 builder.Services.AddDbContext<Context>(opt => opt.UseSqlServer(Secrets.connectionString));
 
 var app = builder.Build();

@@ -8,7 +8,10 @@ namespace rF2XMLTestAPI.DBContext
         public Context(DbContextOptions<Context> options) : base(options)
         {
         }
-
+        public Context()
+        {
+            
+        }
         public DbSet<Driver> Drivers { get; set; }
         public DbSet<Lap> Laps { get; set; }
         public DbSet<RaceResults> RaceResults { get; set; }

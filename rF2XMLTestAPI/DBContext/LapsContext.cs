@@ -9,6 +9,11 @@ namespace rF2XMLTestAPI.DBContext
         {
         }
 
+        public LapsContext()
+        {
+            
+        }
+
         public DbSet<Lap> Laps { get; set; }
     }
 }

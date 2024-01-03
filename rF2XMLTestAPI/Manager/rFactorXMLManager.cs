@@ -5,6 +5,7 @@ using Formatting = Newtonsoft.Json.Formatting;
 using rF2XMLTestAPI.DBContext;
 using Newtonsoft.Json.Linq;
 using System.Linq;
+using Microsoft.EntityFrameworkCore;
 
 namespace rF2XMLTestAPI.Manager
 {
@@ -17,7 +18,7 @@ namespace rF2XMLTestAPI.Manager
         {
             _driverContext = DriverContext;
             _lapsContext = LapsContext;
-            _raceResultContext = raceResultContext; 
+            _raceResultContext = raceResultContext;
         }
         public Root LoadLatestResult()
         {
@@ -25,28 +26,48 @@ namespace rF2XMLTestAPI.Manager
             var jsonObject = ParseFileToJson(file);
             var root = ProcessJsonToRoot(jsonObject);
             var existingTrack = AddTrackToDatabase(root);
+            //var existingDriver = AddDriverToDatabase(root);
             UpdateDatabase(root, existingTrack);
             return root;
         }
 
+        public Root LoadCustomFile(string filepath)
+        {
+            var file = GetCustomFile(filepath);
+            var json = ParseFileToJson(file);
+            var root = ProcessJsonToRoot(json);
+            var existingTrack = AddTrackToDatabase(root);
+
+            return root;
+        }
 
         public List<FileContent> GetAllXmlFilesInDirectoryWithContents(string directoryPath)
         {
             var result = new List<FileContent>();
 
-            if (Directory.Exists(directoryPath))
+            try
             {
-                string[] files = Directory.GetFiles(directoryPath, "*.xml");
-
-                foreach (var file in files)
+                if (Directory.Exists(directoryPath))
                 {
-                    var content = File.ReadAllText(file);
-                    result.Add(new FileContent { FilePath = file, Content = content });
+                    string[] files = Directory.GetFiles(directoryPath, "*.xml");
+
+                    foreach (var file in files)
+                    {
+                        using (var reader = new StreamReader(file))
+                        {
+                            var content = reader.ReadToEnd();
+                            result.Add(new FileContent { FilePath = file, Content = content });
+                        }
+                    }
+                }
+                else
+                {
+                    throw new DirectoryNotFoundException($"The directory {directoryPath} does not exist.");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                throw new DirectoryNotFoundException($"The directory {directoryPath} does not exist.");
+                throw new Exception("An error occurred while getting all XML files in directory with contents.", ex);
             }
 
             return result;
@@ -54,125 +75,184 @@ namespace rF2XMLTestAPI.Manager
 
         private FileInfo GetLatestFile()
         {
-            string pattern = "*.xml";
-            var filePath = "D:\\Racing\\rfactor2-dedicated\\UserData\\Log\\Results";
-            var dirInfo = new DirectoryInfo(filePath);
-            return (from f in dirInfo.GetFiles(pattern) orderby f.LastWriteTime descending select f).First();
+            try
+            {
+                string pattern = "*.xml";
+                var filePath = "D:\\Racing\\rfactor2-dedicated\\UserData\\Log\\Results";
+                var dirInfo = new DirectoryInfo(filePath);
+                var latestFile = (from f in dirInfo.GetFiles(pattern) orderby f.LastWriteTime descending select f).First();
+                string fileContent = File.ReadAllText(latestFile.FullName);
+                return latestFile;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("An error occurred while getting the latest file.", ex);
+            }
         }
 
-        public  FileInfo[] GetAllXmlFiles()
+        public FileInfo GetCustomFile(string filePath)
         {
-            string pattern = "*.xml";
-            var filePath = "D:\\Racing\\rfactor2-dedicated\\UserData\\Log\\Results";
-            var dirInfo = new DirectoryInfo(filePath);
-            return dirInfo.GetFiles(pattern).OrderByDescending(f => f.LastWriteTime).ToArray();
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    return new FileInfo(filePath);
+                }
+                else
+                {
+                    throw new FileNotFoundException($"The file {filePath} does not exist.");
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("An error occurred while getting the custom file.", ex);
+            }
+        }
+
+        public FileInfo[] GetAllXmlFiles()
+        {
+            try
+            {
+                string pattern = "*.xml";
+                var filePath = "D:\\Racing\\rfactor2-dedicated\\UserData\\Log\\Results";
+                var dirInfo = new DirectoryInfo(filePath);
+                return dirInfo.GetFiles(pattern).OrderByDescending(f => f.LastWriteTime).ToArray();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("An error occurred while getting all XML files.", ex);
+            }
         }
 
         private JObject ParseFileToJson(FileInfo file)
         {
-            using (StreamReader r = new StreamReader(file.FullName))
+            try
             {
-                XmlDocument doc = new XmlDocument();
-                string xml = r.ReadToEnd();
-                doc.LoadXml(xml);
-
-                string jsonText = JsonConvert.SerializeXmlNode(doc, Formatting.Indented);
-
-                JObject jsonObject = JObject.Parse(jsonText);
-
-                string[] keys = { "Practice", "Practice1","Practice2","Practice3", "Qualify", "Qualify1", "Qualify2", "Qualify3", "Race", "Race1", "Race2", "Race3", "TestDay" };
-                JToken driverElement = null;
-
-                foreach (var key in keys)
+                using (StreamReader r = new StreamReader(file.FullName))
                 {
-                    if (jsonObject["rFactorXML"]["RaceResults"][key] != null)
+                    XmlDocument doc = new XmlDocument();
+                    doc.Load(r);
+                    JObject jsonObject = JObject.Parse(JsonConvert.SerializeXmlNode(doc));
+
+                    string[] keys = { "Practice", "Practice1", "Practice2", "Practice3", "Qualify", "Qualify1", "Qualify2", "Qualify3", "Race", "Race1", "Race2", "Race3", "TestDay" };
+                    JToken driverElement = keys.Select(key => jsonObject.SelectToken($"rFactorXML.RaceResults.{key}.Driver")).FirstOrDefault(token => token != null);
+
+                    if (driverElement != null)
                     {
-                        driverElement = jsonObject["rFactorXML"]["RaceResults"][key]["Driver"];
-                        break;
+                        jsonObject["rFactorXML"]["RaceResults"].Last.Remove();
+                        jsonObject["rFactorXML"]["RaceResults"]["Driver"] = driverElement;
                     }
+
+                    return jsonObject;
                 }
-
-                jsonObject["rFactorXML"]["RaceResults"].Last.Remove();
-                jsonObject["rFactorXML"]["RaceResults"]["Driver"] = driverElement;
-
-                return jsonObject;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("An error occurred while parsing file to JSON.", ex);
             }
         }
         private Root ProcessJsonToRoot(JObject jsonObject)
         {
-            string modifiedJsonString = jsonObject.ToString();
-            Root? root = JsonConvert.DeserializeObject<Root>(modifiedJsonString);
-            return root;
+            try
+            {
+                Root? root = jsonObject.ToObject<Root>();
+                return root;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("An error occurred while processing JSON.", ex);
+            }
         }
 
         private RaceResults AddTrackToDatabase(Root root)
         {
+            if (root == null)
+            {
+                throw new ArgumentNullException(nameof(root), "root cannot be null.");
+            }
+
             string TrackCourse = root.rFactorXML.RaceResults.TrackCourse.ToString();
 
-            RaceResults existingTrack = _raceResultContext.RaceResults.FirstOrDefault(d => d.TrackCourse == TrackCourse);
-            if (existingTrack == null)
+            if (string.IsNullOrEmpty(TrackCourse))
             {
-                var entityEntry = _raceResultContext.RaceResults.Add(new RaceResults { TrackCourse = TrackCourse });
-                _raceResultContext.SaveChanges();
-                existingTrack = entityEntry.Entity;
+                throw new ArgumentException("TrackCourse cannot be null or empty.", nameof(TrackCourse));
             }
-            return existingTrack;
+
+            try
+            {
+                RaceResults existingTrack = _raceResultContext.RaceResults.AsNoTracking().FirstOrDefault(d => d.TrackCourse == TrackCourse);
+                if (existingTrack == null)
+                {
+                    var entityEntry = _raceResultContext.RaceResults.Add(new RaceResults { TrackCourse = TrackCourse });
+                    _raceResultContext.SaveChanges();
+                    existingTrack = entityEntry.Entity;
+                }
+                return existingTrack;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("An error occurred while adding track to database.", ex);
+            }
         }
 
-         private void UpdateDatabase(Root root, RaceResults existingTrack)
-       {
-            string trackVenue = root.rFactorXML.RaceResults.TrackCourse.ToString();
-
-            if (root != null && root.rFactorXML.RaceResults.Driver != null)
+        private void UpdateDatabase(Root root, RaceResults existingTrack)
+        {
+            try
             {
-                foreach (var driver in root.rFactorXML.RaceResults.Driver)
+                if (root != null && root.rFactorXML.RaceResults.Driver != null)
                 {
-                    //Split Driver Name into First and Last Name
-                    string[] names = driver.FirstName.Split(' ');
-                    if (names.Length > 1)
+                    foreach (var driver in root.rFactorXML.RaceResults.Driver)
                     {
-                        driver.FirstName = names[0];
-                        driver.LastName = names[1];
-                    }
-
-                    //Check if Driver already exists in Database
-                    Driver? existingDriver = _driverContext.Drivers.FirstOrDefault(d => d.FirstName == driver.FirstName && d.LastName == driver.LastName);
-
-                    //Driver? existingDriver = _driverContext.Drivers.FirstOrDefault(d => d.Name == driver.Name);
-
-                    if (existingDriver == null)
-                    {
-                        _driverContext.Drivers.Add(new Driver { FirstName = driver.FirstName, LastName = driver.LastName });
-                        _driverContext.SaveChanges();
-                    }
-
-                    if (driver.Lap != null)
-                    {
-                        foreach (var lap in driver.Lap)
+                        //Split Driver Name into First and Last Name
+                        string[] names = driver.FirstName.Split(' ');
+                        if (!names.Any(string.IsNullOrEmpty))
                         {
-                            if (lap != null && lap.LapTime != "--.----")
-                            {
-                                var lapEntity = new Lap
-                                {
-                                    DriverId = existingDriver != null ? existingDriver.Id : driver.Id,
-                                    LapTime = lap.LapTime,
-                                    Sector1 = lap.Sector1,
-                                    Sector2 = lap.Sector2,
-                                    Sector3 = lap.Sector3,
-                                    RaceResultsId = existingTrack.Id,
-                                    CarClass = driver.CarClass,
-                                    CarType = driver.CarType,
-                                    Fuel = lap.Fuel,
-                                    VehName = driver.VehName
-                                };
+                            driver.FirstName = names[0];
+                            driver.LastName = names[1];
+                        }
+                        //Check if Driver already exists in Database
+                        Driver? existingDriver = _driverContext.Drivers.FirstOrDefault(d => d.FirstName == driver.FirstName && d.LastName == driver.LastName);
 
-                                _lapsContext.Laps.Add(lapEntity);
+                        if (existingDriver == null)
+                        {
+                            var entityDriver = _driverContext.Drivers.Add(new Driver { FirstName = driver.FirstName, LastName = driver.LastName });
+                            //_driverContext.SaveChanges();
+                            existingDriver = entityDriver.Entity;
+                        }
+
+                        if (driver.Lap != null)
+                        {
+                            foreach (var lap in driver.Lap)
+                            {
+                                if (lap != null && lap.LapTime != "--.----")
+                                {
+                                    var lapEntity = new Lap
+                                    {
+                                        DriverId = existingDriver != null ? existingDriver.Id : driver.Id,
+                                        LapTime = lap.LapTime,
+                                        Sector1 = lap.Sector1,
+                                        Sector2 = lap.Sector2,
+                                        Sector3 = lap.Sector3,
+                                        RaceResultsId = existingTrack.Id,
+                                        CarClass = driver.CarClass,
+                                        CarType = driver.CarType,
+                                        Fuel = lap.Fuel,
+                                        VehName = driver.VehName
+                                    };
+
+                                    _lapsContext.Laps.Add(lapEntity);
+
+                                }
                             }
                         }
                     }
+                    _driverContext.SaveChanges();
+                    _lapsContext.SaveChanges();
                 }
-                
-                _lapsContext.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("An error occurred while updating the database.", ex);
             }
         }
     }
