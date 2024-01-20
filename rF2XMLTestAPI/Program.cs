@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using rF2XMLTestAPI.DBContext;
+using rF2XMLTestAPI.Manager;
+using rF2XMLTestAPI.Model;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +19,8 @@ builder.Services.AddCors(options =>
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-
+builder.Services.AddHostedService<FileWatcherService>();
+builder.Services.AddScoped<rFactorXMLManager>();
 
 builder.Services.AddDbContext<DriverContext>(opt => opt.UseSqlServer(Secrets.connectionString));
 builder.Services.AddDbContext<LapsContext>(opt => opt.UseSqlServer(Secrets.connectionString));
@@ -32,6 +35,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+
 
 app.UseCors("AllowAll");
 

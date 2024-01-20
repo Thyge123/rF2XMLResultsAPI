@@ -28,11 +28,11 @@ namespace rF2XMLTestAPI.Controllers
                 ReferenceHandler = ReferenceHandler.Preserve
             };
         }
-
+        /*
         [EnableCors("AllowAll")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [HttpGet("GetRaceResults")]
+        [HttpPost("GetRaceResults")]
         public ActionResult<Root> GetRaceResults()
         {
             try
@@ -45,11 +45,11 @@ namespace rF2XMLTestAPI.Controllers
                 return BadRequest($"Error: {ex.Message}");
             }
         }
-
+        */
         [EnableCors("AllowAll")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [HttpGet("GetCustomFile")]
+        [HttpPost("GetCustomFile")]
         public ActionResult<Root> GetCustomFile(string path)
         {
             try
