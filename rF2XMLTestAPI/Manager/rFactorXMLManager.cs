@@ -56,7 +56,8 @@ namespace rF2XMLTestAPI.Manager
                         using (var reader = new StreamReader(file))
                         {
                             var content = reader.ReadToEnd();
-                            result.Add(new FileContent { FilePath = file, Content = content });
+                            var fileName = Path.GetFileName(file);
+                            result.Add(new FileContent { Name = fileName, Content = content });
                         }
                     }
                 }

@@ -69,11 +69,11 @@ namespace rF2XMLTestAPI.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpGet("GetAllXMLResults")]
-        public ActionResult<List<FileContent>> GetAllXMLFilesInDirectoryWithContents(string directoryPath)
+        public ActionResult<List<FileContent>> GetAllXMLFilesInDirectoryWithContents()
         {
             try
             {
-                var result = _manager.GetAllXmlFilesInDirectoryWithContents(directoryPath);
+                var result = _manager.GetAllXmlFilesInDirectoryWithContents("D:\\Racing\\rfactor2-dedicated\\UserData\\Log\\Results");
                 return Ok(result);
             }
             catch (Exception ex)
